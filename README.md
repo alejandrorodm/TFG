@@ -100,10 +100,13 @@ coins = ['NEAR-USDT', 'ETH-USDT', 'XRP-USDT', 'ADA-USDT', 'SOL-USDT',
 ## 📁 Estructura del proyecto
 
 ```
-├── Marketdata.py              # Controla las peticiones de datos de precios, gestiona las fechas y almacena la información en hojas de cálculo
-├── Portfolio.py               # Clase principal que gestiona la optimización de cartera con modelos matemáticos y el modelo N-BEATS
-├── GUI.py                     # Proporciona la interfaz gráfica para la simulación y gestión de carteras
-├── results/                   # Almacena los resultados generados tras cada simulación según año y riesgo
+├── Marketdata.py               # Controla las peticiones de datos de precios, gestiona las fechas y almacena la información en hojas de cálculo
+├── Portfolio.py                # Clase principal que gestiona la optimización de cartera con modelos matemáticos y el modelo N-BEATS
+├── GUI.py                      # Proporciona la interfaz gráfica para la simulación y gestión de carteras
+├── crypto_<año>_prices.xlsx    # Precios diarios en el año seleccionado para el estudio
+├── crypto_<año>_returns.xlsx   # Retornos calculados a partir de los precios diarios
+├── crypto_<año+1>_prices.xlsx  # Precios diarios del año seleccionado para la simulación
+├── results/                    # Almacena los resultados generados tras cada simulación según año y riesgo
 │   ├── crypto_<año>_portfolio.xlsx     # Porcentajes de inversión por activo y modelo
 │   ├── final_portfolio_values.xlsx     # Valor final de la cartera tras la simulación
 │   ├── portfolio_evolution.png         # Gráfico de evolución del valor de la cartera
