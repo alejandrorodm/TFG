@@ -1,0 +1,12 @@
+pandas
+torch
+darts
+pytorch-lightning
+scikit-learn
+cvxopt
+scipy
+matplotlib
+numpy
+PySide6
+kucoin-python
+openpyxl
