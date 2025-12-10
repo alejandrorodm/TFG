@@ -205,6 +205,7 @@ class Portfolio:
         self.df_nbeats = pd.DataFrame()  # Dataframe with the N-BEATS predictions
         self.df_prices_test = pd.DataFrame() # Dataframe with the prices of the test set
         self.folder_name = "results"
+        self.min_num_data = 0
         
         
     def get_prices(self, temporality, startDate, endDate, excelFilename="crypto_2024"):
@@ -242,6 +243,34 @@ class Portfolio:
             df_r[asset.name] = coin_df_r[asset.name]
         
         return df_r
+    
+    def get_min_rows(self, temporality, startDate, endDate):
+        """
+        Get the minimum number of rows across all coins for a given temporality.
+        This is useful to control n_future parameter based on data availability.
+        
+        Args:
+            temporality (str): Temporality of the data
+            startDate (tuple): Start date of the data
+            endDate (tuple): End date of the data
+            
+        Returns:
+            dict: Dictionary with coin names as keys and number of rows as values
+            int: Minimum number of rows across all coins
+        """
+        rows_per_coin = {}
+        
+        for asset in self.assets:
+            data = asset.obtainData(asset.name, temporality, startDate, endDate)
+            df, _ = asset.datapricesToDf(data)
+            num_rows = len(df)
+            rows_per_coin[asset.name] = num_rows
+            print(f"{asset.name}: {num_rows} rows")
+        
+        min_rows = min(rows_per_coin.values()) if rows_per_coin else 0
+        print(f"\nMinimum rows across all coins: {min_rows}")
+        
+        return rows_per_coin, min_rows
     
     def get_returns_from_prices(self, df_prices):
         """
@@ -365,14 +394,16 @@ class Portfolio:
         
         return portfolio_values, final_values, df_result
 
-    def get_current_weights(self, temporality='1day', l_riesgo=0.25, delta=0.1):
+    def get_current_weights(self, temporality='1day', l_riesgo=0.25, delta=0.01, run_nbeats=True):
         """
         Calculates portfolio weights using data from the last year up to today.
+        Automatically adjusts temporality and date range based on data availability.
         
         Args:
             temporality (str): Temporality of the data
             l_riesgo (float): Risk aversion parameter
             delta (float): Diversification factor
+            run_nbeats (bool): Whether to run N-BEATS model
             
         Returns:
             df_result (DataFrame): DataFrame with the optimal weights of the portfolio
@@ -382,16 +413,99 @@ class Portfolio:
             start = now.replace(year=now.year - 1)
         except ValueError: # Leap year fix
             start = now.replace(year=now.year - 1, day=28)
-            
+        
         endDate = (now.year, now.month, now.day, now.hour, now.minute, now.second)
         startDate = (start.year, start.month, start.day, start.hour, start.minute, start.second)
-        
+
         print(f"Fetching data from {startDate} to {endDate}")
         
+        # Get initial returns data
         df_r = self.get_returns(temporality, startDate, endDate)
         
         if df_r.empty:
             raise ValueError("The returns DataFrame is empty.")
+        
+        # Find the first row where ALL coins have valid (non-null) data
+        valid_data_mask = df_r.notna().all(axis=1)
+        first_valid_idx = valid_data_mask.idxmax() if valid_data_mask.any() else 0
+        
+        # Get the number of valid rows (where all coins have data)
+        num_valid_rows = valid_data_mask.sum()
+        
+        print(f"\nData availability check:")
+        print(f"  Total rows fetched: {len(df_r)}")
+        print(f"  Rows with all coins having data: {num_valid_rows}")
+        print(f"  First valid row index: {first_valid_idx}")
+        
+        # Define expected rows based on temporality
+        expected_rows = {
+            '1day': 365,
+            '8hour': 365 * 3,  # 3 periods of 8h per day = 1,095 rows/year
+            '4hour': 365 * 6   # 6 periods of 4h per day = 2,190 rows/year
+        }
+        
+        min_required_rows = expected_rows.get(temporality, 365)
+        
+        # Check if we need to adjust startDate or temporality
+        # Cascade strategy: 1day → 8hour → 4hour
+        if num_valid_rows < min_required_rows:
+            print(f"\n⚠️  Insufficient data: {num_valid_rows} < {min_required_rows} rows")
+            
+            # Try 8hour first (better balance between granularity and noise)
+            if temporality == '1day':
+                print("Switching to 8hour temporality...")
+                temporality = '8hour'
+                min_required_rows = expected_rows['8hour']
+                
+                # Re-fetch data with 8hour temporality
+                df_r = self.get_returns(temporality, startDate, endDate)
+                valid_data_mask = df_r.notna().all(axis=1)
+                first_valid_idx = valid_data_mask.idxmax() if valid_data_mask.any() else 0
+                num_valid_rows = valid_data_mask.sum()
+                
+                print(f"  New rows with 8hour temporality: {num_valid_rows}")
+                
+                # If still not enough, try 4hour as last resort
+                if num_valid_rows < min_required_rows:
+                    print(f"  Still insufficient ({num_valid_rows} < {min_required_rows})")
+                    print("  Switching to 4hour temporality as last resort...")
+                    temporality = '4hour'
+                    min_required_rows = expected_rows['4hour']
+                    
+                    # Re-fetch data with 4hour temporality
+                    df_r = self.get_returns(temporality, startDate, endDate)
+                    valid_data_mask = df_r.notna().all(axis=1)
+                    first_valid_idx = valid_data_mask.idxmax() if valid_data_mask.any() else 0
+                    num_valid_rows = valid_data_mask.sum()
+                    
+                    print(f"  New rows with 4hour temporality: {num_valid_rows}")
+            
+            # If still not enough data, adjust startDate to first valid date
+            if num_valid_rows < min_required_rows and first_valid_idx > 0:
+                print(f"Adjusting startDate to first valid date (index {first_valid_idx})...")
+                
+                # Get the timestamp of the first valid row
+                first_valid_timestamp = df_r.index[first_valid_idx]
+                
+                # Convert to datetime if it's a timestamp
+                if isinstance(first_valid_timestamp, (int, float)):
+                    first_valid_date = pd.to_datetime(first_valid_timestamp, unit='s')
+                else:
+                    first_valid_date = pd.to_datetime(first_valid_timestamp)
+                
+                # Update startDate
+                startDate = (first_valid_date.year, first_valid_date.month, first_valid_date.day,
+                           first_valid_date.hour, first_valid_date.minute, first_valid_date.second)
+                
+                print(f"  New startDate: {startDate}")
+                
+                # Re-fetch data with adjusted startDate
+                df_r = self.get_returns(temporality, startDate, endDate)
+                num_valid_rows = len(df_r)
+        
+        print(f"\n✓ Using temporality: {temporality}")
+        print(f"✓ Final number of rows: {num_valid_rows}")
+        print(f"✓ Date range: {startDate} to {endDate}\n")
             
         df_markowitz = self.markowitz_function(df_r, l_riesgo)
         df_cvar_markowitz = self.cvar_markowitz(df_r, l_riesgo, 95)
@@ -409,11 +523,24 @@ class Portfolio:
         self.train_all()
         
         df_prices_nbeats = pd.DataFrame()
-        n_future = 365 # Forecasting 1 year into the future
-        for asset in self.assets:
-            forecast = asset.predict(n_future)
-            forecast_df = forecast.to_dataframe()
-            df_prices_nbeats[asset.name] = forecast_df[asset.name]
+
+        if run_nbeats:
+            # Adjust n_future based on temporality and available data
+            if temporality == '1day':
+                n_future = min(365, num_valid_rows)
+            elif temporality == '8hour':
+                n_future = min(365 * 3, num_valid_rows)  # 1,095 periods for 1 year
+            elif temporality == '4hour':
+                n_future = min(365 * 6, num_valid_rows)  # 2,190 periods for 1 year
+            else:
+                n_future = min(365, num_valid_rows)
+            
+            print(f"N-BEATS forecasting {n_future} periods into the future ({temporality} temporality)")
+            
+            for asset in self.assets:
+                forecast = asset.predict(n_future)
+                forecast_df = forecast.to_dataframe()
+                df_prices_nbeats[asset.name] = forecast_df[asset.name]
             
         df_returns_nbeats = self.get_returns_from_prices(df_prices_nbeats)
         df_nbeats = self.markowitz_function(df_returns_nbeats, l_riesgo)
