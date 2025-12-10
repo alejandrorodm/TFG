@@ -12,7 +12,7 @@ def verify():
     print("Computing current weights...")
 
     try:
-        weights = portfolio.get_current_weights()
+        weights = portfolio.get_current_weights(temporality='1day', run_nbeats=False)
         print("\nWeights calculated successfully:")
         print(weights)
         print("\nSum of weights:")
