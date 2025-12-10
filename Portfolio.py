@@ -206,9 +206,6 @@ class Portfolio:
         self.df_prices_test = pd.DataFrame() # Dataframe with the prices of the test set
         self.folder_name = "results"
         
-    #Guardar como variables los dataframes con los porcentajes de cada modelo??
-    def __init__(self, assets):
-        self.assets = assets
         
     def get_prices(self, temporality, startDate, endDate, excelFilename="crypto_2024"):
         """
@@ -367,6 +364,63 @@ class Portfolio:
         print(results)
         
         return portfolio_values, final_values, df_result
+
+    def get_current_weights(self, temporality='1day', l_riesgo=0.25, delta=0.1):
+        """
+        Calculates portfolio weights using data from the last year up to today.
+        
+        Args:
+            temporality (str): Temporality of the data
+            l_riesgo (float): Risk aversion parameter
+            delta (float): Diversification factor
+            
+        Returns:
+            df_result (DataFrame): DataFrame with the optimal weights of the portfolio
+        """
+        now = mkd.getNowDate()
+        try:
+            start = now.replace(year=now.year - 1)
+        except ValueError: # Leap year fix
+            start = now.replace(year=now.year - 1, day=28)
+            
+        endDate = (now.year, now.month, now.day, now.hour, now.minute, now.second)
+        startDate = (start.year, start.month, start.day, start.hour, start.minute, start.second)
+        
+        print(f"Fetching data from {startDate} to {endDate}")
+        
+        df_r = self.get_returns(temporality, startDate, endDate)
+        
+        if df_r.empty:
+            raise ValueError("The returns DataFrame is empty.")
+            
+        df_markowitz = self.markowitz_function(df_r, l_riesgo)
+        df_cvar_markowitz = self.cvar_markowitz(df_r, l_riesgo, 95)
+        df_ew = self.equally_weighted_portfolio(df_r)
+        df_diversified_markowitz = self.diversified_markowitz_function(df_r, l_riesgo, delta)
+        
+        df_result = pd.DataFrame(index=df_r.columns)
+        df_result['Markowitz'] = df_markowitz['Markowitz'].values
+        df_result['CVaR Markowitz'] = df_cvar_markowitz['CVaR Markowitz'].values
+        df_result['Equally Weighted'] = df_ew['Equally Weighted'].values
+        df_result['Diversified Markowitz'] = df_diversified_markowitz['Diversified Markowitz'].values
+        
+        # N-BEATS
+        print("\n\nN-BEATS model.")
+        self.train_all()
+        
+        df_prices_nbeats = pd.DataFrame()
+        n_future = 365 # Forecasting 1 year into the future
+        for asset in self.assets:
+            forecast = asset.predict(n_future)
+            forecast_df = forecast.to_dataframe()
+            df_prices_nbeats[asset.name] = forecast_df[asset.name]
+            
+        df_returns_nbeats = self.get_returns_from_prices(df_prices_nbeats)
+        df_nbeats = self.markowitz_function(df_returns_nbeats, l_riesgo)
+        
+        df_result['N-BEATS'] = df_nbeats['Markowitz'].values
+        
+        return df_result
         
     def markowitz_function(self, df_returns, l_riesgo=1):
         """
@@ -381,7 +435,7 @@ class Portfolio:
             df_result (DataFrame): DataFrame with the optimal weights of the portfolio    
         """    
         print("\n\nMarkowitz's model.")
-        print(f"Lambda (λ): {l_riesgo}")
+        print(f"Lambda: {l_riesgo}")
 
         cov = df_returns.cov()
         cov_matrix = matrix(cov.values) 
@@ -390,12 +444,13 @@ class Portfolio:
         r_riesgo = matrix(-l_riesgo * r.values)  
         
         #Restriction:
-        A = matrix(np.ones(len(self.assets)).reshape(1, -1))
+        n_assets = df_returns.shape[1]
+        A = matrix(np.ones(n_assets).reshape(1, -1))
         b = matrix(1.0) 
         
         # Para cumplir w>=0 (no se pueden tener pesos negativos)
-        G = matrix(-np.eye(len(self.assets))) # Matriz identidad en negativo 
-        h = matrix(np.zeros(len(self.assets))) # Vector de ceros (pesos iguales o mayores a 0)
+        G = matrix(-np.eye(n_assets)) # Matriz identidad en negativo 
+        h = matrix(np.zeros(n_assets)) # Vector de ceros (pesos iguales o mayores a 0)
         
         sol = solvers.qp(P=cov_matrix, q=r_riesgo, G=G, h=h, A=A, b=b)
         
@@ -405,7 +460,7 @@ class Portfolio:
         print("Sum of weights:", w_opt.sum())
         
         # Crear un DataFrame con los nombres de los activos y los resultados de la optimización
-        df_result = pd.DataFrame(w_opt, columns=["Markowitz"])
+        df_result = pd.DataFrame(w_opt, columns=["Markowitz"], index=df_returns.columns)
 
         return df_result
     
@@ -423,7 +478,7 @@ class Portfolio:
             df_result (DataFrame): the optimal weights of the portfolio
         """    
         print("\n\nMarkowitz model with CVaR.")
-        print(f"Risk aversion factor (λ): {l_riesgo}")
+        print(f"Risk aversion factor: {l_riesgo}")
         print(f"CVaR level: {cvar}%")
                                 
         # Calcular la media de los retornos (μ)
@@ -441,12 +496,15 @@ class Portfolio:
 
         # Restricciones
         # Los pesos deben sumar 1
+        # Restricciones
+        # Los pesos deben sumar 1
         def constraint(w):
             return np.sum(w) - 1
 
-        bounds = [(0, 1) for _ in range(len(self.assets))] # No negatividad
+        n_assets = df_returns.shape[1]
+        bounds = [(0, 1) for _ in range(n_assets)] # No negatividad
         
-        initial_guess = np.ones(len(self.assets)) / len(self.assets) # Inicialización de los pesos
+        initial_guess = np.ones(n_assets) / n_assets # Inicialización de los pesos
 
         # Optimización
         result = minimize(objective, initial_guess, args=(mu, l_riesgo, CVaR), method='SLSQP', bounds=bounds, constraints={'type': 'eq', 'fun': constraint})
@@ -457,8 +515,9 @@ class Portfolio:
             print(f"Optimal portfolio weights: {w_opt}")
         else:
             print("Optimization was not successful:", result.message)
+            w_opt = initial_guess
         
-        df_result = pd.DataFrame(w_opt, columns=["CVaR Markowitz"])
+        df_result = pd.DataFrame(w_opt, columns=["CVaR Markowitz"], index=df_returns.columns)
         
         return df_result
     
@@ -471,8 +530,9 @@ class Portfolio:
             excel_filename (string): the name of the excel file where the results are stored. If None, the name will be the same as the input file + '_ew.xlsx'.
         """
         print("\n\nEqually Weighted. Modelo de portafolio igualmente ponderado.")
-                
-        df_result = pd.DataFrame([1/len(self.assets)] * len(self.assets), columns=["Equally Weighted"])
+        
+        n_assets = df_returns.shape[1]
+        df_result = pd.DataFrame([1/n_assets] * n_assets, columns=["Equally Weighted"], index=df_returns.columns)
         
         return df_result
     
@@ -488,8 +548,8 @@ class Portfolio:
         """    
         
         print("\n\nMarkowitz model with diversification penalty.")
-        print(f"Risk aversion factor (λ): {l_riesgo}")
-        print(f"Diversification factor (δ): {delta}")
+        print(f"Risk aversion factor: {l_riesgo}")
+        print(f"Diversification factor: {delta}")
         
         # Media de los retornos (μ)
         mu = df_returns.mean()
@@ -508,25 +568,29 @@ class Portfolio:
         diversification_penalty = matrix(delta * np.eye(len(mu)))
         
         # Restricción de igualdad: la suma de los pesos debe ser 1 (suma total del portafolio)
-        A = matrix(np.ones(len(self.assets)).reshape(1, -1))  # Suma de los pesos
+        n_assets = df_returns.shape[1]
+        A = matrix(np.ones(n_assets).reshape(1, -1))  # Suma de los pesos
         b = matrix(1.0)  # Suma total debe ser 1
 
         # Restricción de no negatividad: los pesos deben ser >= 0
-        G = matrix(-np.eye(len(self.assets)))  # Matriz identidad en negativo
-        h = matrix(np.zeros(len(self.assets)))  
+        G = matrix(-np.eye(n_assets))  # Matriz identidad en negativo
+        h = matrix(np.zeros(n_assets))  
 
         objective_matrix = cov_matrix + diversification_penalty  # Suma de la matriz de covarianza y penalización por diversificación
         solution = solvers.qp(P=objective_matrix, q=q, G=G, h=h, A=A, b=b)
         
         w_opt = np.round(np.array(solution['x']).flatten(), 4) # Pesos óptimos
         
-        df_result = pd.DataFrame(w_opt, columns=["Diversified Markowitz"])
+        df_result = pd.DataFrame(w_opt, columns=["Diversified Markowitz"], index=df_returns.columns)
 
         return df_result
         
     def train_all(self):
         for asset in self.assets:
-            asset.train_model(folder_name=self.folder_name)
+            try:
+                asset.train_model(folder_name=self.folder_name)
+            except Exception as e:
+                print(f"Skipping training for {asset.name}: {e}")
     
     def predict_all(self):
         forecasts = {}
@@ -667,14 +731,17 @@ def gui_portfolio(capital, year, coins=None, temporality='1day', l_riesgo=0.25, 
   
 if __name__ == "__main__":
     coins = ['BTC-USDT', 'ETH-USDT', 'XRP-USDT', 'ADA-USDT', 'SOL-USDT', 'BNB-USDT', 'DOT-USDT', 'AVAX-USDT', 'DOGE-USDT', 'SHIB-USDT']
-    temporality = '1day'
-    year = 2022
-    assets = []
-    l_riesgo = 0.25
-    delta = 0.01
-    capital = 1500
+    # temporality = '1day'
+    # year = 2022
+    # assets = []
+    # l_riesgo = 0.25
+    # delta = 0.01
+    # capital = 1500
     
-    gui_portfolio(capital=capital, year=year, coins=coins, temporality=temporality, l_riesgo=l_riesgo, delta=delta)
+    # gui_portfolio(capital=capital, year=year, coins=coins, temporality=temporality, l_riesgo=l_riesgo, delta=delta)
+
+    p = Portfolio([Asset(c) for c in coins])
+    print(p.get_current_weights())
 
     
    
