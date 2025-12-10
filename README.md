@@ -1,4 +1,5 @@
-# Sistema para la Gestión de Carteras para Activos de Alta Volatilidad  
+# Sistema para la Gestión de Carteras para Activos de Alta Volatilidad
+
 ### Aplicación a Criptomonedas
 
 Este proyecto corresponde al Trabajo de Fin de Grado (TFG) del Grado en Ingeniería Informática. Su objetivo principal es ofrecer un sistema visual e interactivo que permita simular y comparar la evolución de carteras de criptomonedas utilizando diferentes modelos de asignación de activos, adaptado a activos de alta volatilidad.
@@ -20,8 +21,8 @@ La aplicación proporciona una interfaz gráfica desarrollada en Python que perm
 
 ![GUI](GUI.png)
 
-En la parte central se muestra la **evolución temporal del valor de la cartera** según el modelo seleccionado como simulación si hubieramos realizado la inversión para cada modelo.  
-En la parte inferior se encuentran:
+En la parte central se muestra la **evolución temporal del valor de la cartera** según el modelo seleccionado como simulación si hubieramos realizado la inversión para cada modelo.En la parte inferior se encuentran:
+
 - Una gráfica de **rentabilidad por modelo**.
 - Una tabla con los resultados detallados: capital final, beneficio obtenido y rentabilidad (%) por modelo.
 
@@ -50,7 +51,7 @@ venv\Scripts\activate.bat    # En Windows
 pip install -r requirements.txt
 ```
 
-> Si no tienes `pip` actualizado, puedes hacerlo con:  
+> Si no tienes `pip` actualizado, puedes hacerlo con:
 > `python -m pip install --upgrade pip`
 
 ## 🚀 Ejecución
@@ -63,13 +64,23 @@ python gui.py
 
 ## 📊 Modelos incluidos
 
-| Modelo                | Descripción                                                                 |
-|----------------------|------------------------------------------------------------------------------|
-| Markowitz            | Optimización clásica de cartera con media-varianza.                         |
-| CVaR Markowitz       | Optimización con medida de riesgo CVaR (Conditional Value at Risk).         |
-| Equally Weighted     | Reparto equitativo del capital entre todos los activos seleccionados.       |
-| Diversified Markowitz| Versión diversificada del modelo de Markowitz.                              |
-| N-BEATS              | Modelo de deep learning para series temporales aplicado a la predicción.    |
+| Modelo                | Descripción                                                              |
+| --------------------- | ------------------------------------------------------------------------- |
+| Markowitz             | Optimización clásica de cartera con media-varianza.                     |
+| CVaR Markowitz        | Optimización con medida de riesgo CVaR (Conditional Value at Risk).      |
+| Equally Weighted      | Reparto equitativo del capital entre todos los activos seleccionados.     |
+| Diversified Markowitz | Versión diversificada del modelo de Markowitz.                           |
+| N-BEATS               | Modelo de deep learning para series temporales aplicado a la predicción. |
+
+### Ejecución sin simulación
+
+Para una ejecución en tiempo real (sin simulación), que considera datos desde el día actual hasta un año atrás, se utiliza el archivo `final_execution_weights.py`.
+
+**Pasos clave:**
+
+*   **Especificar criptomonedas:** En el archivo `final_execution_weights.py`, se deben especificar las criptomonedas deseadas.
+*   **Verificación:** Es crucial verificar que estas criptomonedas estén listadas en KuCoin (ejemplo: `https://www.kucoin.com/trade/BTC-USDT`).
+*   **Formato:** Asegúrate de añadir el sufijo `-USDT` a cada criptomoneda (por ejemplo, para Bitcoin, se introduciría `BTC-USDT`).
 
 ## ⚙️ Configuración de criptomonedas
 
@@ -77,15 +88,15 @@ Las pruebas realizadas con el sistema se han realizado utilizando **10 criptomon
 
 Cabe destacar que se podrán usar **todas aquellas criptomonedas listadas en KuCoin**, pero por defecto, el sistema trabaja con las siguientes:
 
-- BTC-USDT  
-- ETH-USDT  
-- XRP-USDT  
-- ADA-USDT  
-- SOL-USDT  
-- BNB-USDT  
-- DOT-USDT  
-- AVAX-USDT  
-- DOGE-USDT  
+- BTC-USDT
+- ETH-USDT
+- XRP-USDT
+- ADA-USDT
+- SOL-USDT
+- BNB-USDT
+- DOT-USDT
+- AVAX-USDT
+- DOGE-USDT
 - SHIB-USDT
 
 Si se desea utilizar la interfaz gráfica con un conjunto distinto de criptomonedas, será necesario **modificar la variable `coins` dentro del archivo `gui.py`**.
@@ -119,6 +130,6 @@ coins = ['NEAR-USDT', 'ETH-USDT', 'XRP-USDT', 'ADA-USDT', 'SOL-USDT',
 
 Este proyecto ha sido desarrollado como Trabajo de Fin de Grado en Ingeniería Informática.
 
-Autor: **Alejandro Rodríguez Moreno**.  
-Tutor: Francisco de Asís Fernández Navarro.  
+Autor: **Alejandro Rodríguez Moreno**.
+Tutor: Francisco de Asís Fernández Navarro.
 Universidad: Universidad de Málaga
