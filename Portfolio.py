@@ -155,15 +155,18 @@ class Asset:
         )
 
         print(f"Training model for {self.name}...")
+        use_gpu = torch.cuda.is_available()
+        
         self.model = NBEATSModel(
             input_chunk_length=input_chunk_length,
             output_chunk_length=output_chunk_length,
             n_epochs=epochs,
             random_state=42,
             pl_trainer_kwargs={
-                "accelerator": "gpu" if torch.cuda.is_available() else "cpu",
+                "accelerator": "gpu" if use_gpu else "cpu",
                 "callbacks": [early_stopper],
                 "enable_progress_bar": True,
+                "enable_model_summary": False,  # Reduce verbosity
             }        
         )
         
